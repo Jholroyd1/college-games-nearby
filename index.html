@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>College Games Near Me</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    max-width: 720px;
+    margin: 2rem auto;
+    padding: 0 1rem;
+    line-height: 1.5;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .controls { display: flex; gap: 1rem; align-items: center; margin: 1.5rem 0; flex-wrap: wrap; }
+  .controls label { font-size: 0.9rem; }
+  .controls label input[type="checkbox"] { margin-right: 0.25rem; vertical-align: middle; }
+  input[type="range"] { width: 200px; }
+  input[type="date"] { padding: 0.3rem; border-radius: 6px; border: 1px solid #888; }
+  input[type="text"] {
+    padding: 0.3rem; border-radius: 6px; border: 1px solid #888;
+    font-size: 0.9rem; background: transparent;
+  }
+  select {
+    padding: 0.3rem; border-radius: 6px; border: 1px solid #888;
+    background: transparent; font-size: 0.9rem;
+  }
+  button {
+    padding: 0.4rem 0.9rem; border-radius: 6px; border: 1px solid #888;
+    background: transparent; cursor: pointer; font-size: 0.9rem;
+  }
+  button:hover { background: rgba(128,128,128,0.15); }
+  #status { font-size: 0.85rem; opacity: 0.7; margin-bottom: 1rem; }
+  #locationInfo { font-size: 0.85rem; opacity: 0.75; margin-bottom: 0.5rem; }
+  #locationError { font-size: 0.85rem; color: #c33; margin-bottom: 1rem; min-height: 1.2em; }
+  .game {
+    border: 1px solid rgba(128,128,128,0.3);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
+  }
+  .game .name { font-weight: 600; }
+  .game .meta { font-size: 0.85rem; opacity: 0.75; margin-top: 0.25rem; }
+  .game .when { font-weight: 500; opacity: 0.9; }
+  .sport-tag {
+    display: inline-block; font-size: 0.7rem; text-transform: uppercase;
+    letter-spacing: 0.05em; padding: 0.1rem 0.4rem; border-radius: 4px;
+    background: rgba(128,128,128,0.2); margin-right: 0.5rem;
+  }
+</style>
+</head>
+<body>
+
+<h1>College Games Near Me</h1>
+<div id="status">Requesting your location…</div>
+<div id="locationInfo"></div>
+<div id="locationError"></div>
+
+<div class="controls">
+  <label>
+    <input type="radio" name="locMode" value="auto" checked> Auto
+  </label>
+  <label>
+    <input type="radio" name="locMode" value="manual"> Manual
+  </label>
+  <input type="text" id="manualLocation" placeholder="City or ZIP code" style="display:none; min-width:180px;">
+  <button id="applyLocation" style="display:none;">Apply</button>
+</div>
+
+<div class="controls">
+  <label for="radius">Radius: <span id="radiusValue">100</span> mi</label>
+  <input type="range" id="radius" min="10" max="500" step="10" value="100">
+  <label>From: <input type="date" id="dateFrom"></label>
+  <label>To:   <input type="date" id="dateTo"></label>
+  <label><input type="checkbox" id="filterFootball" checked> Football</label>
+  <label><input type="checkbox" id="filterBasketball" checked> Basketball</label>
+  <label>Sort by:
+    <select id="sortMode">
+      <option value="time">Time</option>
+      <option value="distance">Distance</option>
+    </select>
+  </label>
+  <label>Search:
+    <input type="text" id="searchInput" placeholder="Team, venue, or city">
+  </label>
+  <button id="refresh">Refresh games</button>
+</div>
+
+<div id="results"></div>
+
+<!-- Venue map must load before the app script -->
+<script src="venueLocations.js"></script>
+<script>
+// ---------- Configuration ----------
+const CORS_PROXY = "http://localhost:8000/?";
+
+const SPORTS = {
+  football: "football/college-football",
+  basketball: "basketball/mens-college-basketball",
+};
+
+// ---------- State ----------
+let userLocation = null;
+let allEvents = [];
+let dateFrom = null;
+let dateTo = null;
+let enabledSports = { football: true, basketball: true };
+let sortMode = "time";
+let searchQuery = "";
+let locationMode = "auto";
+
+// ---------- Helpers ----------
+function distanceKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function setStatus(msg) {
+  document.getElementById("status").textContent = msg;
+}
+
+function isoToday() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function initDates() {
+  const today = isoToday();
+  dateFrom = today;
+  dateTo = today;
+  document.getElementById("dateFrom").value = today;
+  document.getElementById("dateTo").value = today;
+}
+
+function readSportFilters() {
+  enabledSports = {
+    football:   document.getElementById("filterFootball").checked,
+    basketball: document.getElementById("filterBasketball").checked,
+  };
+}
+
+function readSortMode() {
+  sortMode = document.getElementById("sortMode").value;
+}
+
+function readSearchQuery() {
+  searchQuery = document.getElementById("searchInput").value.trim().toLowerCase();
+}
+
+// ---------- Location (auto) ----------
+function getUserLocation() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      return reject(new Error("Geolocation not supported by this browser."));
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (err) => reject(new Error("Location denied: " + err.message)),
+      { enableHighAccuracy: false, timeout: 10000 }
+    );
+  });
+}
+
+// ---------- Reverse geocode (BigDataCloud, free, no key) ----------
+async function reverseGeocode(lat, lng) {
+  try {
+    const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const city = data.city || data.locality || "";
+    const region = data.principalSubdivision || "";
+    return [city, region].filter(Boolean).join(", ") || null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------- Forward geocode: ZIP code via Zippopotam.us (free, CORS enabled) ----------
+async function geocodeZip(zip) {
+  const url = `https://api.zippopotam.us/us/${zip}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`ZIP not found (${res.status})`);
+  const data = await res.json();
+  const place = data.places?.[0];
+  if (!place) throw new Error("ZIP not found");
+  return {
+    lat: parseFloat(place.latitude),
+    lng: parseFloat(place.longitude),
+  };
+}
+
+// ---------- Forward geocode: city name via Geocode.xyz (free, no key, CORS enabled) ----------
+async function geocodeCity(city) {
+  const url = `https://geocode.xyz/${encodeURIComponent(city)}?json=1`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`City lookup failed (${res.status})`);
+  const data = await res.json();
+  const lat = parseFloat(data.latt);
+  const lng = parseFloat(data.longt);
+  if (isNaN(lat) || isNaN(lng)) throw new Error("City not found");
+  return { lat, lng };
+}
+
+// ---------- Manual location ----------
+async function applyManualLocation() {
+  const raw = document.getElementById("manualLocation").value.trim();
+  const errEl = document.getElementById("locationError");
+  errEl.textContent = "";
+
+  if (!raw) {
+    errEl.textContent = "Enter a city or ZIP code.";
+    return;
+  }
+
+  setStatus("Resolving location…");
+
+  try {
+    let loc;
+    // If it looks like a 5-digit ZIP, use Zippopotam.us
+    if (/^\d{5}$/.test(raw)) {
+      loc = await geocodeZip(raw);
+    } else {
+      // Otherwise treat as a city name (Geocode.xyz)
+      loc = await geocodeCity(raw);
+    }
+
+    userLocation = loc;
+
+    // Try reverse geocode for a friendly display name; fall back to coords
+    let place = await reverseGeocode(loc.lat, loc.lng);
+    if (!place) place = `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
+    document.getElementById("locationInfo").textContent = `Your location: ${place}`;
+
+    render();
+    setStatus(`Using manual location. (${allEvents.length} events checked)`);
+  } catch (e) {
+    errEl.textContent = e.message;
+    setStatus("Error: " + e.message);
+  }
+}
+
+// ---------- Location mode toggle ----------
+function onLocationModeChange() {
+  const mode = document.querySelector('input[name="locMode"]:checked').value;
+  locationMode = mode;
+
+  const manualInput = document.getElementById("manualLocation");
+  const applyBtn = document.getElementById("applyLocation");
+
+  if (mode === "manual") {
+    manualInput.style.display = "";
+    applyBtn.style.display = "";
+    manualInput.focus();
+  } else {
+    manualInput.style.display = "none";
+    applyBtn.style.display = "none";
+    document.getElementById("locationError").textContent = "";
+    getUserLocation()
+      .then(async (loc) => {
+        userLocation = loc;
+        const place = await reverseGeocode(loc.lat, loc.lng);
+        document.getElementById("locationInfo").textContent = place
+          ? `Your location: ${place}`
+          : `Your location: ${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
+        render();
+      })
+      .catch((e) => {
+        document.getElementById("locationError").textContent = e.message;
+      });
+  }
+}
+
+// ---------- Fetching ----------
+async function fetchSport(sportPath) {
+  const days = [];
+  const start = new Date(dateFrom + "T00:00:00");
+  const end   = new Date(dateTo   + "T00:00:00");
+
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    const yyyy = d.getFullYear();
+    const mm   = String(d.getMonth() + 1).padStart(2, "0");
+    const dd   = String(d.getDate()).padStart(2, "0");
+    days.push(`${yyyy}${mm}${dd}`);
+  }
+
+  const SPORT_QUERY = {
+    "football/college-football": "",
+    "basketball/mens-college-basketball": "&groups=50&limit=500",
+  };
+  const extra = SPORT_QUERY[sportPath] || "";
+
+  const allEvents = [];
+  const seen = new Set();
+
+  for (const day of days) {
+    const espnUrl =
+      `https://site.api.espn.com/apis/site/v2/sports/${sportPath}/scoreboard?dates=${day}${extra}`;
+    let res;
+    try {
+      res = await fetch(CORS_PROXY + encodeURIComponent(espnUrl));
+    } catch (e) {
+      console.warn(`ESPN ${sportPath} ${day} network error:`, e);
+      continue;
+    }
+    if (!res.ok) {
+      console.warn(`ESPN ${sportPath} ${day} failed (${res.status})`);
+      continue;
+    }
+
+    const data = await res.json();
+    const events = data.events || [];
+    console.log(`ESPN ${sportPath} ${day}: ${events.length} events`);
+
+    for (const ev of events) {
+      if (seen.has(ev.id)) continue;
+      seen.add(ev.id);
+      ev._sport = sportPath;
+      allEvents.push(ev);
+    }
+  }
+
+  return allEvents;
+}
+
+async function fetchAllGames() {
+  readSportFilters();
+
+  const paths = [];
+  if (enabledSports.football)   paths.push(SPORTS.football);
+  if (enabledSports.basketball) paths.push(SPORTS.basketball);
+
+  if (paths.length === 0) return [];
+
+  const results = await Promise.allSettled(paths.map(fetchSport));
+  const merged = [];
+  for (const r of results) {
+    if (r.status === "fulfilled") merged.push(...r.value);
+    else console.warn("A sport failed to load:", r.reason);
+  }
+  return merged;
+}
+
+// ---------- Filtering (venue-based + search) ----------
+function gamesWithinRadius(radiusMiles) {
+  if (!userLocation) return [];
+  const radiusKm = radiusMiles * 1.60934;
+  const out = [];
+
+  readSearchQuery();
+
+  for (const ev of allEvents) {
+    const comp = ev.competitions?.[0];
+    if (!comp) continue;
+
+    const venue = comp.venue;
+    if (!venue?.address?.city) continue;
+
+    const key = `${venue.address.city}|${venue.address.state || ""}`;
+    const loc = window.venueLocations?.[key];
+    if (!loc) continue;
+
+    // Search filter: team name, venue name, city, or state
+    if (searchQuery) {
+      const haystack = (
+        `${ev.name || ""} ` +
+        `${venue.fullName || ""} ` +
+        `${venue.address.city || ""} ` +
+        `${venue.address.state || ""}`
+      ).toLowerCase();
+      if (!haystack.includes(searchQuery)) continue;
+    }
+
+    const km = distanceKm(userLocation.lat, userLocation.lng, loc.lat, loc.lng);
+    if (km <= radiusKm) {
+      out.push({
+        event: ev,
+        distanceKm: km,
+        venueName: venue.fullName || "Unknown Venue",
+        venueCity: venue.address.city,
+        venueState: venue.address.state || "",
+      });
+    }
+  }
+
+  readSortMode();
+
+  if (sortMode === "distance") {
+    return out.sort((a, b) => a.distanceKm - b.distanceKm);
+  }
+
+  return out.sort((a, b) => {
+    const da = new Date(a.event.date).getTime();
+    const db = new Date(b.event.date).getTime();
+    if (da !== db) return da - db;
+    return a.distanceKm - b.distanceKm;
+  });
+}
+
+// ---------- Rendering ----------
+function render() {
+  const radius = Number(document.getElementById("radius").value);
+  const container = document.getElementById("results");
+
+  if (!userLocation) {
+    container.innerHTML = "";
+    return;
+  }
+
+  if (!enabledSports.football && !enabledSports.basketball) {
+    container.innerHTML = `<p>Select at least one sport to see games.</p>`;
+    return;
+  }
+
+  const matches = gamesWithinRadius(radius);
+
+  if (matches.length === 0) {
+    const rangeText = dateFrom === dateTo
+      ? `on ${dateFrom}`
+      : `between ${dateFrom} and ${dateTo}`;
+    const searchText = searchQuery ? ` matching "${searchQuery}"` : "";
+    container.innerHTML =
+      `<p>No games within ${radius} miles ${rangeText}${searchText}. Try a larger radius, different dates, or a different search.</p>`;
+    return;
+  }
+
+  container.innerHTML = matches.map(({ event, distanceKm, venueName, venueCity, venueState }) => {
+    const status = event.status?.type?.description || "";
+    const sportLabel = event._sport.includes("football") ? "Football" : "Basketball";
+    const miles = distanceKm / 1.60934;
+    const venueText = `${venueName} (${venueCity}${venueState ? ", " + venueState : ""})`;
+
+    const when = event.date
+      ? new Date(event.date).toLocaleString(undefined, {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : "Date TBD";
+
+    return `
+      <div class="game">
+        <div class="name">
+          <span class="sport-tag">${sportLabel}</span>${event.name}
+        </div>
+        <div class="meta">
+          <span class="when">${when}</span> · ${status} · ${miles.toFixed(1)} mi from you · ${venueText}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+// ---------- Main flow ----------
+async function init() {
+  initDates();
+
+  try {
+    setStatus("Requesting your location…");
+    userLocation = await getUserLocation();
+
+    const place = await reverseGeocode(userLocation.lat, userLocation.lng);
+    document.getElementById("locationInfo").textContent = place
+      ? `Your location: ${place}`
+      : `Your location: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`;
+
+    setStatus("Loading games from ESPN…");
+    allEvents = await fetchAllGames();
+
+    render();
+    setStatus(
+      `Showing games for ${dateFrom}${dateFrom === dateTo ? "" : " – " + dateTo}. ` +
+      `(${allEvents.length} events checked)`
+    );
+  } catch (err) {
+    setStatus("Error: " + err.message);
+    console.error(err);
+  }
+}
+
+// ---------- Event handlers ----------
+document.getElementById("radius").addEventListener("input", (e) => {
+  document.getElementById("radiusValue").textContent = e.target.value;
+  render();
+});
+
+document.getElementById("searchInput").addEventListener("input", () => {
+  render();
+});
+
+document.querySelectorAll('input[name="locMode"]').forEach((el) => {
+  el.addEventListener("change", onLocationModeChange);
+});
+document.getElementById("applyLocation").addEventListener("click", applyManualLocation);
+
+function onDateChange() {
+  const fromEl = document.getElementById("dateFrom");
+  const toEl = document.getElementById("dateTo");
+  if (!fromEl.value || !toEl.value) return;
+
+  if (fromEl.value > toEl.value) {
+    [fromEl.value, toEl.value] = [toEl.value, fromEl.value];
+  }
+
+  dateFrom = fromEl.value;
+  dateTo = toEl.value;
+
+  setStatus("Loading games for selected dates…");
+  fetchAllGames()
+    .then((events) => {
+      allEvents = events;
+      render();
+      setStatus(
+        `Showing games for ${dateFrom}${dateFrom === dateTo ? "" : " – " + dateTo}. ` +
+        `(${allEvents.length} events checked)`
+      );
+    })
+    .catch((err) => {
+      setStatus("Error: " + err.message);
+      console.error(err);
+    });
+}
+
+function onSportFilterChange() {
+  setStatus("Loading games for selected sports…");
+  fetchAllGames()
+    .then((events) => {
+      allEvents = events;
+      render();
+      setStatus(
+        `Showing games for ${dateFrom}${dateFrom === dateTo ? "" : " – " + dateTo}. ` +
+        `(${allEvents.length} events checked)`
+      );
+    })
+    .catch((err) => {
+      setStatus("Error: " + err.message);
+      console.error(err);
+    });
+}
+
+document.getElementById("dateFrom").addEventListener("change", onDateChange);
+document.getElementById("dateTo").addEventListener("change", onDateChange);
+document.getElementById("refresh").addEventListener("click", onDateChange);
+document.getElementById("filterFootball").addEventListener("change", onSportFilterChange);
+document.getElementById("filterBasketball").addEventListener("change", onSportFilterChange);
+document.getElementById("sortMode").addEventListener("change", () => {
+  render();
+});
+
+// ---------- Start ----------
+init();
+</script>
+</body>
+</html>

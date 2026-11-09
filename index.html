@@ -13,7 +13,19 @@
     padding: 0 1rem;
     line-height: 1.5;
   }
-  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+  
+  /* Tabs */
+  .tabs { display: flex; gap: 1rem; border-bottom: 1px solid rgba(128,128,128,0.3); margin-bottom: 1.5rem; }
+  .tab-btn {
+    padding: 0.5rem 1rem; border: none; background: transparent; cursor: pointer;
+    font-size: 1rem; font-weight: 600; opacity: 0.6; border-bottom: 2px solid transparent;
+    color: inherit; margin-bottom: -1px;
+  }
+  .tab-btn.active { opacity: 1; border-bottom-color: #888; }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
   .controls { display: flex; gap: 1rem; align-items: center; margin: 1.5rem 0; flex-wrap: wrap; }
   .controls label { font-size: 0.9rem; }
   .controls label input[type="checkbox"] { margin-right: 0.25rem; vertical-align: middle; }
@@ -29,12 +41,13 @@
   }
   button {
     padding: 0.4rem 0.9rem; border-radius: 6px; border: 1px solid #888;
-    background: transparent; cursor: pointer; font-size: 0.9rem;
+    background: transparent; cursor: pointer; font-size: 0.9rem; color: inherit;
   }
   button:hover { background: rgba(128,128,128,0.15); }
   #status { font-size: 0.85rem; opacity: 0.7; margin-bottom: 1rem; }
   #locationInfo { font-size: 0.85rem; opacity: 0.75; margin-bottom: 0.5rem; }
   #locationError { font-size: 0.85rem; color: #c33; margin-bottom: 1rem; min-height: 1.2em; }
+  
   .game {
     border: 1px solid rgba(128,128,128,0.3);
     border-radius: 8px;
@@ -49,56 +62,111 @@
     letter-spacing: 0.05em; padding: 0.1rem 0.4rem; border-radius: 4px;
     background: rgba(128,128,128,0.2); margin-right: 0.5rem;
   }
+  
+  .add-btn {
+    margin-top: 0.75rem; font-size: 0.75rem; padding: 0.3rem 0.6rem;
+    border: 1px solid #888; background: transparent; cursor: pointer; border-radius: 4px; color: inherit;
+  }
+  .add-btn:hover { background: rgba(128,128,128,0.15); }
+  .add-btn.added { color: #4CAF50; border-color: #4CAF50; cursor: default; }
+  
+  /* Decision Buttons */
+  .actions { display: flex; gap: 0.5rem; margin-top: 0.75rem; flex-wrap: wrap; }
+  .btn-approve { color: #4CAF50; border-color: #4CAF50; }
+  .btn-approve:hover { background: rgba(76, 175, 80, 0.15); }
+  .btn-deny { color: #c33; border-color: #c33; }
+  .btn-deny:hover { background: rgba(204, 51, 51, 0.1); }
+  .btn-remove { color: #c33; border-color: #c33; }
+  .btn-remove:hover { background: rgba(204, 51, 51, 0.1); }
+  .btn-unapprove { color: #ff9800; border-color: #ff9800; }
+  .btn-unapprove:hover { background: rgba(255, 152, 0, 0.15); }
+
+  /* Links & Price Buttons */
+  .btn-link {
+    display: inline-block; text-decoration: none; color: #2196F3;
+    border: 1px solid #2196F3; padding: 0.3rem 0.6rem; border-radius: 4px;
+    font-size: 0.75rem; margin-top: 0.5rem;
+  }
+  .btn-link:hover { background: rgba(33, 150, 243, 0.1); }
+  
+  .btn-price { color: #9C27B0; border-color: #9C27B0; margin-top: 0.5rem; }
+  .btn-price:hover { background: rgba(156, 39, 176, 0.1); }
+  .price-result { font-size: 0.85rem; margin-top: 0.5rem; font-weight: 500; }
+
+  /* Game States */
+  .game.approved { border-left: 4px solid #4CAF50; }
 </style>
 </head>
 <body>
 
 <h1>College Games Near Me</h1>
-<div id="status">Requesting your location…</div>
-<div id="locationInfo"></div>
-<div id="locationError"></div>
 
-<div class="controls">
-  <label>
-    <input type="radio" name="locMode" value="auto" checked> Auto
-  </label>
-  <label>
-    <input type="radio" name="locMode" value="manual"> Manual
-  </label>
-  <input type="text" id="manualLocation" placeholder="City or ZIP code" style="display:none; min-width:180px;">
-  <button id="applyLocation" style="display:none;">Apply</button>
+<div class="tabs">
+  <button class="tab-btn active" id="btn-tab-find" onclick="switchTab('find')">Find Games</button>
+  <button class="tab-btn" id="btn-tab-pending" onclick="switchTab('pending')">Pending (<span id="pendingCount">0</span>)</button>
+  <button class="tab-btn" id="btn-tab-approved" onclick="switchTab('approved')">Approved (<span id="approvedCount">0</span>)</button>
 </div>
 
-<div class="controls">
-  <label for="radius">Radius: <span id="radiusValue">100</span> mi</label>
-  <input type="range" id="radius" min="10" max="500" step="10" value="100">
-  <label>From: <input type="date" id="dateFrom"></label>
-  <label>To:   <input type="date" id="dateTo"></label>
-  <label><input type="checkbox" id="filterFootball" checked> Football</label>
-  <label><input type="checkbox" id="filterBasketball" checked> Basketball</label>
-  <label>Sort by:
-    <select id="sortMode">
-      <option value="time">Time</option>
-      <option value="distance">Distance</option>
-    </select>
-  </label>
-  <label>Search:
-    <input type="text" id="searchInput" placeholder="Team, venue, or city">
-  </label>
-  <button id="refresh">Refresh games</button>
+<!-- FIND GAMES TAB -->
+<div id="tab-find" class="tab-content active">
+  <div id="status">Requesting your location…</div>
+  <div id="locationInfo"></div>
+  <div id="locationError"></div>
+
+  <div class="controls">
+    <label>
+      <input type="radio" name="locMode" value="auto" checked> Auto
+    </label>
+    <label>
+      <input type="radio" name="locMode" value="manual"> Manual
+    </label>
+    <input type="text" id="manualLocation" placeholder="City or ZIP code" style="display:none; min-width:180px;">
+    <button id="applyLocation" style="display:none;">Apply</button>
+  </div>
+
+  <div class="controls">
+    <label for="radius">Radius: <span id="radiusValue">100</span> mi</label>
+    <input type="range" id="radius" min="10" max="500" step="10" value="100">
+    <label>From: <input type="date" id="dateFrom"></label>
+    <label>To:   <input type="date" id="dateTo"></label>
+    <label><input type="checkbox" id="filterFootball" checked> Football</label>
+    <label><input type="checkbox" id="filterBasketball" checked> Men's Basketball</label>
+    <label><input type="checkbox" id="filterWomensBasketball" checked> Women's Basketball</label>
+    <label>Sort by:
+      <select id="sortMode">
+        <option value="time">Time</option>
+        <option value="distance">Distance</option>
+      </select>
+    </label>
+    <label>Search:
+      <input type="text" id="searchInput" placeholder="Team, venue, or city">
+    </label>
+    <button id="refresh">Refresh games</button>
+  </div>
+
+  <div id="results"></div>
 </div>
 
-<div id="results"></div>
+<!-- PENDING TAB -->
+<div id="tab-pending" class="tab-content">
+  <div id="pendingResults"></div>
+</div>
+
+<!-- APPROVED TAB -->
+<div id="tab-approved" class="tab-content">
+  <div id="approvedResults"></div>
+</div>
 
 <!-- Venue map must load before the app script -->
 <script src="venueLocations.js"></script>
 <script>
 // ---------- Configuration ----------
-const CORS_PROXY = "http://localhost:8000/?";
+const CORS_PROXY = "https://your-worker-name.your-name.workers.dev/?url=";
 
 const SPORTS = {
   football: "football/college-football",
   basketball: "basketball/mens-college-basketball",
+  womensBasketball: "basketball/womens-college-basketball",
 };
 
 // ---------- State ----------
@@ -106,10 +174,13 @@ let userLocation = null;
 let allEvents = [];
 let dateFrom = null;
 let dateTo = null;
-let enabledSports = { football: true, basketball: true };
+let enabledSports = { football: true, basketball: true, womensBasketball: true };
 let sortMode = "time";
 let searchQuery = "";
 let locationMode = "auto";
+
+// Load saved games from localStorage
+let myGames = JSON.parse(localStorage.getItem("myCollegeGames")) || [];
 
 // ---------- Helpers ----------
 function distanceKm(lat1, lon1, lat2, lon2) {
@@ -142,6 +213,7 @@ function readSportFilters() {
   enabledSports = {
     football:   document.getElementById("filterFootball").checked,
     basketball: document.getElementById("filterBasketball").checked,
+    womensBasketball: document.getElementById("filterWomensBasketball").checked,
   };
 }
 
@@ -151,6 +223,180 @@ function readSortMode() {
 
 function readSearchQuery() {
   searchQuery = document.getElementById("searchInput").value.trim().toLowerCase();
+}
+
+// ---------- Tabs & Logic ----------
+function switchTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  
+  document.getElementById(`tab-${tab}`).classList.add('active');
+  document.getElementById(`btn-tab-${tab}`).classList.add('active');
+  
+  if (tab === 'pending') renderPendingGames();
+  if (tab === 'approved') renderApprovedGames();
+}
+
+function saveGame(encodedData, btn) {
+  const gameData = JSON.parse(decodeURIComponent(encodedData));
+  const idx = myGames.findIndex(g => g.id === gameData.id);
+  
+  if (idx >= 0) return;
+  
+  gameData.decision = "pending"; 
+  myGames.push(gameData);
+  localStorage.setItem("myCollegeGames", JSON.stringify(myGames));
+  
+  btn.textContent = "✓ Saved";
+  btn.classList.add("added");
+  btn.disabled = true;
+  updateTabCounts();
+}
+
+function setDecision(eventId, decision) {
+  if (decision === 'denied') {
+    myGames = myGames.filter(g => g.id !== eventId);
+  } else {
+    const game = myGames.find(g => g.id === eventId);
+    if (game) game.decision = decision;
+  }
+  
+  localStorage.setItem("myCollegeGames", JSON.stringify(myGames));
+  
+  renderPendingGames();
+  renderApprovedGames();
+  updateTabCounts();
+  render();
+}
+
+function removeGame(eventId) {
+  myGames = myGames.filter(g => g.id !== eventId);
+  localStorage.setItem("myCollegeGames", JSON.stringify(myGames));
+  renderPendingGames();
+  renderApprovedGames();
+  updateTabCounts();
+  render();
+}
+
+function updateTabCounts() {
+  const pendingCount = myGames.filter(g => g.decision === 'pending').length;
+  const approvedCount = myGames.filter(g => g.decision === 'approved').length;
+  
+  document.getElementById("pendingCount").textContent = pendingCount;
+  document.getElementById("approvedCount").textContent = approvedCount;
+}
+
+function generateGameHTML(game, type) {
+  let sportLabel = "Basketball";
+  if (game._sport.includes("football")) {
+    sportLabel = "Football";
+  } else if (game._sport.includes("womens")) {
+    sportLabel = "Women's Basketball";
+  }
+
+  const when = game.date
+    ? new Date(game.date).toLocaleString(undefined, {
+        weekday: "short", month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit",
+      })
+    : "Date TBD";
+    
+  const venueText = `${game._venueName} (${game._venueCity}${game._venueState ? ", " + game._venueState : ""})`;
+  const decisionClass = game.decision === 'approved' ? 'approved' : '';
+
+  let actionsHTML = "";
+  if (type === 'pending') {
+    actionsHTML = `
+      <div class="actions">
+        <button class="btn-approve" onclick="setDecision('${game.id}', 'approved')">Approve</button>
+        <button class="btn-deny" onclick="setDecision('${game.id}', 'denied')">Deny</button>
+      </div>
+    `;
+  } else if (type === 'approved') {
+    actionsHTML = `
+      <div class="actions">
+        <button class="btn-unapprove" onclick="setDecision('${game.id}', 'pending')">Move to Pending</button>
+        <button class="btn-remove" onclick="removeGame('${game.id}')">Remove</button>
+      </div>
+    `;
+  }
+
+  // Add external links (ESPN / Tickets)
+  let linksHTML = `<div class="actions" style="border-top: none; padding-top: 0; margin-top: 0.5rem;">`;
+  if (game.espnLink) {
+    linksHTML += `<a href="${game.espnLink}" target="_blank" class="btn-link">ESPN Gamecast</a>`;
+  }
+  if (game.ticketLink) {
+    linksHTML += `<a href="${game.ticketLink}" target="_blank" class="btn-link">Buy Tickets</a>`;
+  }
+  linksHTML += `</div>`;
+
+  return `
+    <div class="game ${decisionClass}">
+      <div class="name">
+        <span class="sport-tag">${sportLabel}</span>${game.name}
+      </div>
+      <div class="meta">
+        <span class="when">${when}</span> · ${game.status?.type?.description || ""} · ${venueText}
+      </div>
+      ${actionsHTML}
+      ${linksHTML}
+    </div>
+  `;
+}
+
+function renderPendingGames() {
+  const container = document.getElementById("pendingResults");
+  const visibleGames = myGames.filter(g => g.decision === 'pending');
+  
+  if (visibleGames.length === 0) {
+    container.innerHTML = `<p>You don't have any pending games. Go to "Find Games" to save some.</p>`;
+    return;
+  }
+
+  visibleGames.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  container.innerHTML = visibleGames.map(game => generateGameHTML(game, 'pending')).join("");
+}
+
+function renderApprovedGames() {
+  const container = document.getElementById("approvedResults");
+  const visibleGames = myGames.filter(g => g.decision === 'approved');
+  
+  if (visibleGames.length === 0) {
+    container.innerHTML = `<p>You haven't approved any games yet. Approve them from the Pending tab.</p>`;
+    return;
+  }
+
+  visibleGames.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  container.innerHTML = visibleGames.map(game => generateGameHTML(game, 'approved')).join("");
+}
+
+// ---------- Ticket Price Checker ----------
+async function checkPrices(eventName, city, resultElementId) {
+  const el = document.getElementById(resultElementId);
+  el.textContent = "Checking prices...";
+  el.style.color = "inherit";
+
+  try {
+    const url = `http://localhost:8000/tickets?event=${encodeURIComponent(eventName)}&city=${encodeURIComponent(city)}`;
+    const res = await fetch(url);
+    const data = await res.json();
+
+    if (data.average !== null) {
+      el.textContent = `Avg single ticket: $${data.average} (Lowest: $${data.lowest}) · via ${data.sources.join(", ")}`;
+      el.style.color = "#4CAF50";
+    } else {
+      // Fallback: Show a link to search StubHub manually
+      const stubhubUrl = `https://www.stubhub.com/search?q=${encodeURIComponent(eventName)}`;
+      el.innerHTML = `No API prices found. <a href="${stubhubUrl}" target="_blank" style="color:#2196F3; font-weight:bold;">Search StubHub for tickets →</a>`;
+      el.style.color = "#ff9800";
+    }
+  } catch (e) {
+    // If the proxy fails, still show the StubHub link
+    const stubhubUrl = `https://www.stubhub.com/search?q=${encodeURIComponent(eventName)}`;
+    el.innerHTML = `Error checking API. <a href="${stubhubUrl}" target="_blank" style="color:#2196F3; font-weight:bold;">Search StubHub manually →</a>`;
+    el.style.color = "#c33";
+  }
 }
 
 // ---------- Location (auto) ----------
@@ -167,7 +413,7 @@ function getUserLocation() {
   });
 }
 
-// ---------- Reverse geocode (BigDataCloud, free, no key) ----------
+// ---------- Geocoding ----------
 async function reverseGeocode(lat, lng) {
   try {
     const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lng}&localityLanguage=en`;
@@ -182,7 +428,6 @@ async function reverseGeocode(lat, lng) {
   }
 }
 
-// ---------- Forward geocode: ZIP code via Zippopotam.us (free, CORS enabled) ----------
 async function geocodeZip(zip) {
   const url = `https://api.zippopotam.us/us/${zip}`;
   const res = await fetch(url);
@@ -190,13 +435,9 @@ async function geocodeZip(zip) {
   const data = await res.json();
   const place = data.places?.[0];
   if (!place) throw new Error("ZIP not found");
-  return {
-    lat: parseFloat(place.latitude),
-    lng: parseFloat(place.longitude),
-  };
+  return { lat: parseFloat(place.latitude), lng: parseFloat(place.longitude) };
 }
 
-// ---------- Forward geocode: city name via Geocode.xyz (free, no key, CORS enabled) ----------
 async function geocodeCity(city) {
   const url = `https://geocode.xyz/${encodeURIComponent(city)}?json=1`;
   const res = await fetch(url);
@@ -208,7 +449,7 @@ async function geocodeCity(city) {
   return { lat, lng };
 }
 
-// ---------- Manual location ----------
+// ---------- Manual Location ----------
 async function applyManualLocation() {
   const raw = document.getElementById("manualLocation").value.trim();
   const errEl = document.getElementById("locationError");
@@ -223,17 +464,13 @@ async function applyManualLocation() {
 
   try {
     let loc;
-    // If it looks like a 5-digit ZIP, use Zippopotam.us
     if (/^\d{5}$/.test(raw)) {
       loc = await geocodeZip(raw);
     } else {
-      // Otherwise treat as a city name (Geocode.xyz)
       loc = await geocodeCity(raw);
     }
 
     userLocation = loc;
-
-    // Try reverse geocode for a friendly display name; fall back to coords
     let place = await reverseGeocode(loc.lat, loc.lng);
     if (!place) place = `${loc.lat.toFixed(4)}, ${loc.lng.toFixed(4)}`;
     document.getElementById("locationInfo").textContent = `Your location: ${place}`;
@@ -246,7 +483,6 @@ async function applyManualLocation() {
   }
 }
 
-// ---------- Location mode toggle ----------
 function onLocationModeChange() {
   const mode = document.querySelector('input[name="locMode"]:checked').value;
   locationMode = mode;
@@ -293,6 +529,7 @@ async function fetchSport(sportPath) {
   const SPORT_QUERY = {
     "football/college-football": "",
     "basketball/mens-college-basketball": "&groups=50&limit=500",
+    "basketball/womens-college-basketball": "&groups=50&limit=500",
   };
   const extra = SPORT_QUERY[sportPath] || "";
 
@@ -335,6 +572,7 @@ async function fetchAllGames() {
   const paths = [];
   if (enabledSports.football)   paths.push(SPORTS.football);
   if (enabledSports.basketball) paths.push(SPORTS.basketball);
+  if (enabledSports.womensBasketball) paths.push(SPORTS.womensBasketball);
 
   if (paths.length === 0) return [];
 
@@ -347,7 +585,7 @@ async function fetchAllGames() {
   return merged;
 }
 
-// ---------- Filtering (venue-based + search) ----------
+// ---------- Filtering ----------
 function gamesWithinRadius(radiusMiles) {
   if (!userLocation) return [];
   const radiusKm = radiusMiles * 1.60934;
@@ -366,7 +604,6 @@ function gamesWithinRadius(radiusMiles) {
     const loc = window.venueLocations?.[key];
     if (!loc) continue;
 
-    // Search filter: team name, venue name, city, or state
     if (searchQuery) {
       const haystack = (
         `${ev.name || ""} ` +
@@ -403,7 +640,7 @@ function gamesWithinRadius(radiusMiles) {
   });
 }
 
-// ---------- Rendering ----------
+// ---------- Rendering (Find Games) ----------
 function render() {
   const radius = Number(document.getElementById("radius").value);
   const container = document.getElementById("results");
@@ -413,7 +650,7 @@ function render() {
     return;
   }
 
-  if (!enabledSports.football && !enabledSports.basketball) {
+  if (!enabledSports.football && !enabledSports.basketball && !enabledSports.womensBasketball) {
     container.innerHTML = `<p>Select at least one sport to see games.</p>`;
     return;
   }
@@ -430,21 +667,62 @@ function render() {
     return;
   }
 
-  container.innerHTML = matches.map(({ event, distanceKm, venueName, venueCity, venueState }) => {
+  container.innerHTML = matches.map(({ event, distanceKm, venueName, venueCity, venueState }, index) => {
     const status = event.status?.type?.description || "";
-    const sportLabel = event._sport.includes("football") ? "Football" : "Basketball";
+    
+    let sportLabel = "Basketball";
+    if (event._sport.includes("football")) {
+      sportLabel = "Football";
+    } else if (event._sport.includes("womens")) {
+      sportLabel = "Women's Basketball";
+    }
+
     const miles = distanceKm / 1.60934;
     const venueText = `${venueName} (${venueCity}${venueState ? ", " + venueState : ""})`;
+    const isSaved = myGames.some(g => g.id === event.id);
 
     const when = event.date
       ? new Date(event.date).toLocaleString(undefined, {
-          weekday: "short",
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
+          weekday: "short", month: "short", day: "numeric",
+          hour: "numeric", minute: "2-digit",
         })
       : "Date TBD";
+
+    const espnLink = event.links?.find(l => l.rel?.includes("gamecast") || l.text === "Gamecast")?.href 
+                  || event.links?.[0]?.href 
+                  || `https://www.espn.com/${event._sport.includes('football') ? 'college-football' : 'mens-college-basketball'}/game/_/gameId/${event.id}`;
+                  
+    const ticketLink = event.links?.find(l => l.rel?.includes("tickets") || l.text?.toLowerCase().includes("ticket"))?.href 
+                    || event.competitions?.[0]?.tickets?.[0]?.links?.web?.href 
+                    || null;
+
+    const gameData = {
+      id: event.id,
+      name: event.name,
+      date: event.date,
+      status: event.status,
+      _sport: event._sport,
+      _venueName: venueName,
+      _venueCity: venueCity,
+      _venueState: venueState,
+      espnLink: espnLink,
+      ticketLink: ticketLink
+    };
+    
+    const encodedData = encodeURIComponent(JSON.stringify(gameData));
+    const resultId = `price-result-${index}`;
+
+        // Extract just the first team for a better ticket API search
+    const searchTeam = event.name.split(' at ')[0]; 
+    
+    let linksHTML = `<div class="actions" style="margin-top: 0.5rem; border-top: none; padding-top: 0;">`;
+    linksHTML += `<a href="${espnLink}" target="_blank" class="btn-link">ESPN Gamecast</a>`;
+    if (ticketLink) {
+      linksHTML += `<a href="${ticketLink}" target="_blank" class="btn-link">Buy Tickets (ESPN)</a>`;
+    }
+    linksHTML += `<button class="btn-price" onclick="checkPrices('${searchTeam.replace(/'/g, "\\'")}', '${venueCity.replace(/'/g, "\\'")}', '${resultId}')">Check Prices</button>`;
+    linksHTML += `</div>`;
+    linksHTML += `<div id="${resultId}" class="price-result"></div>`;
 
     return `
       <div class="game">
@@ -454,6 +732,14 @@ function render() {
         <div class="meta">
           <span class="when">${when}</span> · ${status} · ${miles.toFixed(1)} mi from you · ${venueText}
         </div>
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap;">
+          <button class="add-btn ${isSaved ? 'added' : ''}" 
+                  onclick="${isSaved ? '' : `saveGame('${encodedData}', this)`}"
+                  ${isSaved ? 'disabled' : ''}>
+            ${isSaved ? '✓ Saved' : 'Save Game'}
+          </button>
+          ${linksHTML}
+        </div>
       </div>
     `;
   }).join("");
@@ -462,6 +748,7 @@ function render() {
 // ---------- Main flow ----------
 async function init() {
   initDates();
+  updateTabCounts();
 
   try {
     setStatus("Requesting your location…");
@@ -551,6 +838,7 @@ document.getElementById("dateTo").addEventListener("change", onDateChange);
 document.getElementById("refresh").addEventListener("click", onDateChange);
 document.getElementById("filterFootball").addEventListener("change", onSportFilterChange);
 document.getElementById("filterBasketball").addEventListener("change", onSportFilterChange);
+document.getElementById("filterWomensBasketball").addEventListener("change", onSportFilterChange);
 document.getElementById("sortMode").addEventListener("change", () => {
   render();
 });

@@ -161,7 +161,8 @@
 <script src="venueLocations.js"></script>
 <script>
 // ---------- Configuration ----------
-const CORS_PROXY = "https://your-worker-name.your-name.workers.dev/?url=";
+// Point this to your Cloudflare Worker URL
+const CORS_PROXY = "https://college-games-proxy.jackholroyd96.workers.dev/?url=";
 
 const SPORTS = {
   football: "football/college-football",
@@ -378,7 +379,8 @@ async function checkPrices(eventName, city, resultElementId) {
   el.style.color = "inherit";
 
   try {
-    const url = `http://localhost:8000/tickets?event=${encodeURIComponent(eventName)}&city=${encodeURIComponent(city)}`;
+    // Uses the /tickets route on your Cloudflare Worker
+    const url = `https://college-games-proxy.jackholroyd96.workers.dev/tickets?event=${encodeURIComponent(eventName)}&city=${encodeURIComponent(city)}`;
     const res = await fetch(url);
     const data = await res.json();
 
@@ -386,13 +388,11 @@ async function checkPrices(eventName, city, resultElementId) {
       el.textContent = `Avg single ticket: $${data.average} (Lowest: $${data.lowest}) · via ${data.sources.join(", ")}`;
       el.style.color = "#4CAF50";
     } else {
-      // Fallback: Show a link to search StubHub manually
       const stubhubUrl = `https://www.stubhub.com/search?q=${encodeURIComponent(eventName)}`;
       el.innerHTML = `No API prices found. <a href="${stubhubUrl}" target="_blank" style="color:#2196F3; font-weight:bold;">Search StubHub for tickets →</a>`;
       el.style.color = "#ff9800";
     }
   } catch (e) {
-    // If the proxy fails, still show the StubHub link
     const stubhubUrl = `https://www.stubhub.com/search?q=${encodeURIComponent(eventName)}`;
     el.innerHTML = `Error checking API. <a href="${stubhubUrl}" target="_blank" style="color:#2196F3; font-weight:bold;">Search StubHub manually →</a>`;
     el.style.color = "#c33";
@@ -712,9 +712,9 @@ function render() {
     const encodedData = encodeURIComponent(JSON.stringify(gameData));
     const resultId = `price-result-${index}`;
 
-        // Extract just the first team for a better ticket API search
+    // Extract just the first team for a better ticket API search
     const searchTeam = event.name.split(' at ')[0]; 
-    
+
     let linksHTML = `<div class="actions" style="margin-top: 0.5rem; border-top: none; padding-top: 0;">`;
     linksHTML += `<a href="${espnLink}" target="_blank" class="btn-link">ESPN Gamecast</a>`;
     if (ticketLink) {
